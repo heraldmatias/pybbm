@@ -97,13 +97,14 @@ class DefaultPermissionHandler(object):
     def may_create_post(self, user, topic):
         """ return True if `user` is allowed to create a new post in `topic` """
         # if topic is hidden, only staff may post
-        if topic.forum.hidden and (not user.is_staff):
-            return False
+        #if topic.forum.hidden and (not user.is_staff):
+        #    return False
         # if topic is closed, only staff may post
-        if topic.closed and (not user.is_staff):
-            return False
+        #if topic.closed and (not user.is_staff):
+        #    return False
         # only user which have 'pybb.add_post' permission may post
-        return user.has_perm('pybb.add_post')
+        #return user.has_perm('pybb.add_post')
+        return True
     
     def may_post_as_admin(self, user):
         """ return True if `user` may post as admin """

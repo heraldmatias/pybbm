@@ -32,6 +32,7 @@ from pybb.templatetags.pybb_tags import pybb_topic_poll_not_voted
 from pybb import defaults
 
 from pybb.permissions import perms
+from home.views import get_intial_home_data
 
 class RedirectToLoginMixin(object):
     """ mixin which redirects to settings.LOGIN_URL if the view encounters an PermissionDenied exception
@@ -59,6 +60,7 @@ class IndexView(generic.ListView):
 
     def get_context_data(self, **kwargs):
         ctx = super(IndexView, self).get_context_data(**kwargs)
+        ctx.update(get_intial_home_data(self.request))
         categories = ctx['categories']
         for category in categories:
             category.forums_accessed = perms.filter_forums(self.request.user, category.forums.all())
@@ -87,6 +89,7 @@ class CategoryView(RedirectToLoginMixin, generic.DetailView):
 
     def get_context_data(self, **kwargs):
         ctx = super(CategoryView, self).get_context_data(**kwargs)
+        ctx.update(get_intial_home_data(self.request))
         ctx['category'].forums_accessed = perms.filter_forums(self.request.user, ctx['category'].forums.all())
         ctx['categories'] = [ctx['category']]
         return ctx
@@ -103,6 +106,7 @@ class ForumView(RedirectToLoginMixin, generic.ListView):
         
     def get_context_data(self, **kwargs):
         ctx = super(ForumView, self).get_context_data(**kwargs)
+        ctx.update(get_intial_home_data(self.request))
         ctx['forum'] = self.forum
         return ctx
 
@@ -156,6 +160,7 @@ class TopicView(RedirectToLoginMixin, generic.ListView):
 
     def get_context_data(self, **kwargs):
         ctx = super(TopicView, self).get_context_data(**kwargs)
+        ctx.update(get_intial_home_data(self.request))
         if self.request.user.is_authenticated():
             self.request.user.is_moderator = self.request.user.is_superuser or (self.request.user in self.topic.forum.moderators.all())
             self.request.user.is_subscribed = self.request.user in self.topic.subscribers.all()
@@ -281,7 +286,7 @@ class AddPostView(PostEditMixin, generic.CreateView):
             else:
                 post = get_object_or_404(Post, pk=quote_id)
                 quote = defaults.PYBB_QUOTE_ENGINES[defaults.PYBB_MARKUP](post.body, post.user.username)
-                form_kwargs['initial']['body'] = quote
+                form_kwargs['initial']['body'] = quote        
         if self.user.is_staff:
             form_kwargs['initial']['login'] = self.user.username
         return form_kwargs
@@ -299,14 +304,16 @@ class AddPostView(PostEditMixin, generic.CreateView):
 
     @method_decorator(csrf_protect)
     def dispatch(self, request, *args, **kwargs):
-        if request.user.is_authenticated():
-            self.user = request.user
-        else:
-            if defaults.PYBB_ENABLE_ANONYMOUS_POST:
-                self.user, new = User.objects.get_or_create(username=defaults.PYBB_ANONYMOUS_USERNAME)
-            else:
-                from django.contrib.auth.views import redirect_to_login
-                return redirect_to_login(request.get_full_path())
+        from suscripciones.models import Suscriptores        
+        self.user = Suscriptores.objects.get(pk=1)
+        #if request.user.is_authenticated():
+        #    self.user = Suscriptores.objects.get(pk=1)  #request.user
+        #else:
+        #    if defaults.PYBB_ENABLE_ANONYMOUS_POST:
+        #        self.user, new = User.objects.get_or_create(username=defaults.PYBB_ANONYMOUS_USERNAME)
+        #    else:
+        #        from django.contrib.auth.views import redirect_to_login
+        #        return redirect_to_login(request.get_full_path())
         
         self.forum = None
         self.topic = None

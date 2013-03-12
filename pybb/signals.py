@@ -12,13 +12,13 @@ from pybb import defaults
 def post_saved(instance, **kwargs):
     notify_topic_subscribers(instance)
 
-    if instance.user.get_profile().autosubscribe:
-        instance.topic.subscribers.add(instance.user)
+    #if instance.user.get_profile().autosubscribe:
+    #    instance.topic.subscribers.add(instance.user)
 
-    if kwargs['created']:
-        profile = instance.user.get_profile()
-        profile.post_count = instance.user.posts.count()
-        profile.save()
+    #if kwargs['created']:
+    #    profile = instance.user.get_profile()
+    #    profile.post_count = instance.user.posts.count()
+    #    profile.save()
 
 def post_deleted(instance, **kwargs):
     profile = instance.user.get_profile()

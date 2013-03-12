@@ -4,7 +4,7 @@ import os.path
 import uuid
 
 from django.db import models, transaction
-from django.contrib.auth.models import User
+from suscripciones.models import Suscriptores
 from django.core.urlresolvers import reverse
 from django.db.utils import IntegrityError
 from django.utils.html import strip_tags
@@ -94,12 +94,12 @@ class Forum(models.Model):
     name = models.CharField(_('Name'), max_length=80)
     position = models.IntegerField(_('Position'), blank=True, default=0)
     description = models.TextField(_('Description'), blank=True)
-    moderators = models.ManyToManyField(User, blank=True, null=True, verbose_name=_('Moderators'))
+    moderators = models.ManyToManyField(Suscriptores, blank=True, null=True, verbose_name=_('Moderators'))
     updated = models.DateTimeField(_('Updated'), blank=True, null=True)
     post_count = models.IntegerField(_('Post count'), blank=True, default=0)
     topic_count = models.IntegerField(_('Topic count'), blank=True, default=0)
     hidden = models.BooleanField(_('Hidden'), blank=False, null=False, default=False)
-    readed_by = models.ManyToManyField(User, through='ForumReadTracker', related_name='readed_forums')
+    readed_by = models.ManyToManyField(Suscriptores, through='ForumReadTracker', related_name='readed_forums')
     headline = models.TextField(_('Headline'), blank=True, null=True)
 
     class Meta(object):
@@ -111,7 +111,7 @@ class Forum(models.Model):
         return self.name
 
     def update_counters(self):
-        posts = Post.objects.filter(topic__forum_id=self.id)
+        posts = Post.objects.filter(topic__forum__id=self.id)
         self.post_count = posts.count()
         self.topic_count = Topic.objects.filter(forum=self).count()
         try:
@@ -161,14 +161,14 @@ class Topic(models.Model):
     name = models.CharField(_('Subject'), max_length=255)
     created = models.DateTimeField(_('Created'), null=True)
     updated = models.DateTimeField(_('Updated'), null=True)
-    user = models.ForeignKey(User, verbose_name=_('User'))
+    user = models.ForeignKey(Suscriptores, verbose_name=_('Suscriptores'))
     views = models.IntegerField(_('Views count'), blank=True, default=0)
     sticky = models.BooleanField(_('Sticky'), blank=True, default=False)
     closed = models.BooleanField(_('Closed'), blank=True, default=False)
-    subscribers = models.ManyToManyField(User, related_name='subscriptions', verbose_name=_('Subscribers'),
+    subscribers = models.ManyToManyField(Suscriptores, related_name='subscriptions', verbose_name=_('Subscribers'),
         blank=True)
     post_count = models.IntegerField(_('Post count'), blank=True, default=0)
-    readed_by = models.ManyToManyField(User, through='TopicReadTracker', related_name='readed_topics')
+    readed_by = models.ManyToManyField(Suscriptores, through='TopicReadTracker', related_name='readed_topics')
     on_moderation = models.BooleanField(_('On moderation'), default=False)
     poll_type = models.IntegerField(_('Poll type'), choices=POLL_TYPE_CHOICES, default=POLL_TYPE_NONE)
     poll_question = models.TextField(_('Poll question'), blank=True, null=True)
@@ -205,7 +205,19 @@ class Topic(models.Model):
     def save(self, *args, **kwargs):
         if self.id is None:
             self.created = tznow()
+
+        forum_changed = False
+        old_topic = None
+        if self.id is not None:
+            old_topic = Topic.objects.get(id=self.id)
+            if self.forum != old_topic.forum:
+                forum_changed = True
+
         super(Topic, self).save(*args, **kwargs)
+
+        if forum_changed:
+            old_topic.forum.update_counters()
+            self.forum.update_counters()
 
     def delete(self, using=None):
         super(Topic, self).delete(using)
@@ -213,7 +225,7 @@ class Topic(models.Model):
 
     def update_counters(self):
         self.post_count = self.posts.count()
-        last_post = Post.objects.filter(topic_id=self.id).order_by('-created')[0]
+        last_post = Post.objects.filter(topic__id=self.id).order_by('-created')[0]
         self.updated = last_post.updated or last_post.created
         self.save()
 
@@ -252,10 +264,10 @@ class RenderableItem(models.Model):
 
 class Post(RenderableItem):
     topic = models.ForeignKey(Topic, related_name='posts', verbose_name=_('Topic'))
-    user = models.ForeignKey(User, related_name='posts', verbose_name=_('User'))
+    user = models.ForeignKey(Suscriptores, related_name='posts', verbose_name=_('Suscriptores'))
     created = models.DateTimeField(_('Created'), blank=True, db_index=True)
     updated = models.DateTimeField(_('Updated'), blank=True, null=True)
-    user_ip = models.IPAddressField(_('User IP'), blank=True, default='0.0.0.0')
+    user_ip = models.IPAddressField(_('Suscriptores IP'), blank=True, default='0.0.0.0')
     on_moderation = models.BooleanField(_('On moderation'), default=False)
 
     class Meta(object):
@@ -278,16 +290,25 @@ class Post(RenderableItem):
 
         new = self.pk is None
 
-        update_counters = kwargs.pop('update_counters', True)
+        topic_changed = False
+        old_post = None
+        if not new:
+            old_post = Post.objects.get(pk=self.pk)
+            if old_post.topic != self.topic:
+                topic_changed = True
 
         super(Post, self).save(*args, **kwargs)
 
         # If post is topic head and moderated, moderate topic too
-        if self.topic.head == self and self.on_moderation == False and self.topic.on_moderation == True:
+        if self.topic.head == self and not self.on_moderation and self.topic.on_moderation:
             self.topic.on_moderation = False
-        if update_counters:
-            self.topic.update_counters()
-            self.topic.forum.update_counters()
+
+        self.topic.update_counters()
+        self.topic.forum.update_counters()
+
+        if topic_changed:
+            old_post.topic.update_counters()
+            old_post.topic.forum.update_counters()
 
     def get_absolute_url(self):
         return reverse('pybb:post', kwargs={'pk': self.id})
@@ -356,7 +377,7 @@ class Profile(PybbProfile):
     Profile class that can be used if you doesn't have
     your site profile.
     """
-    user = AutoOneToOneField(User, related_name='pybb_profile', verbose_name=_('User'))
+    user = AutoOneToOneField(Suscriptores, related_name='pybb_profile', verbose_name=_('User'))
 
     class Meta(object):
         verbose_name = _('Profile')
@@ -415,7 +436,7 @@ class TopicReadTracker(models.Model):
     """
     Save per user topic read tracking
     """
-    user = models.ForeignKey(User, blank=False, null=False)
+    user = models.ForeignKey(Suscriptores, blank=False, null=False)
     topic = models.ForeignKey(Topic, blank=True, null=True)
     time_stamp = models.DateTimeField(auto_now=True)
 
@@ -451,7 +472,7 @@ class ForumReadTracker(models.Model):
     """
     Save per user forum read tracking
     """
-    user = models.ForeignKey(User, blank=False, null=False)
+    user = models.ForeignKey(Suscriptores, blank=False, null=False)
     forum = models.ForeignKey(Forum, blank=True, null=True)
     time_stamp = models.DateTimeField(auto_now=True)
 
@@ -485,7 +506,7 @@ class PollAnswer(models.Model):
 
 class PollAnswerUser(models.Model):
     poll_answer = models.ForeignKey(PollAnswer, related_name='users', verbose_name=_('Poll answer'))
-    user = models.ForeignKey(User, related_name='poll_answers', verbose_name=_('User'))
+    user = models.ForeignKey(Suscriptores, related_name='poll_answers', verbose_name=_('Suscriptores'))
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:

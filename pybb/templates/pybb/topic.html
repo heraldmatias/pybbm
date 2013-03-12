@@ -17,8 +17,14 @@
         {% include "pybb/breadcrumb.html" %}
     {% endwith %}
 {% endblock %}
+{% block js %}  
+{% endblock %}
+{% block scriptjs %}
+{% endblock %}
 
-{% block content %}
+{% block csspage %}
+{% endblock %}
+{% block contenido-principal %}
     <div class="topic">
         <h1>{{ topic.name }}</h1>
         {% with _('Posts') as label %}

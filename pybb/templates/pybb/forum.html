@@ -8,8 +8,14 @@
         {% include "pybb/breadcrumb.html" %}
     {% endwith %}
 {% endblock %}
+{% block js %}  
+{% endblock %}
+{% block scriptjs %}
+{% endblock %}
 
-{% block content %}
+{% block csspage %}
+{% endblock %}
+{% block contenido-principal %}
     <div class="forum">
         <h1>{{ forum.name }}</h1>
         {% if forum.headline %}
@@ -30,4 +36,4 @@
             </div>
         {% endif %}
     </div>
-{% endblock content %}
+{% endblock contenido-principal %}
